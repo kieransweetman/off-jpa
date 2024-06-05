@@ -4,13 +4,33 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.apache.commons.csv.*;
 
+import fr.diginamic.dao.AdditiveDao;
+import fr.diginamic.dao.AllergenDao;
 import fr.diginamic.dao.BrandDao;
+import fr.diginamic.dao.CategoryDao;
+import fr.diginamic.dao.NutrientDao;
+import fr.diginamic.dao.NutrientGradeDao;
+import fr.diginamic.dao.ProductDao;
+import fr.diginamic.dao.ProductNutrientDao;
+import fr.diginamic.entities.Additive;
+import fr.diginamic.entities.Allergen;
 import fr.diginamic.entities.Brand;
+import fr.diginamic.entities.Category;
+import fr.diginamic.entities.Nutrient;
+import fr.diginamic.entities.NutrientGrade;
+import fr.diginamic.entities.Product;
+import fr.diginamic.entities.ProductNutrient;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.EntityTransaction;
@@ -23,10 +43,6 @@ public class Main {
         EntityManager em = emf.createEntityManager();
         EntityTransaction t = em.getTransaction();
 
-        String csvFile = "open-food-facts.csv";
-        String line;
-        String csvSeparator = "|";
-
         try {
             Reader in = new FileReader("open-food-facts.csv");
             Iterable<CSVRecord> records = CSVFormat.DEFAULT
@@ -38,19 +54,99 @@ public class Main {
 
             long startTime = System.currentTimeMillis(); // Capture start time
             int count = 0;
-            for (CSVRecord record : records) {
-                String category = record.get("categorie");
+            Iterator<CSVRecord> recordIterator = records.iterator();
+
+            // parsing just the nutrient headers
+            if (recordIterator.hasNext()) {
+                CSVRecord headerRecord = recordIterator.next();
+                Map<String, String> headerMap = headerRecord.toMap();
+
+                List<String> nutrientColumns = headerMap.keySet().stream()
+                        .filter(columnName -> columnName.endsWith("100g"))
+                        .collect(Collectors.toList());
+
+                nutrientColumns.stream().forEach(n -> {
+                    NutrientDao nd = new NutrientDao(em);
+                    nd.create(new Nutrient(n));
+                });
+
+            }
+
+            t.commit();
+
+            while (recordIterator.hasNext()) {
+                CSVRecord record = recordIterator.next();
+
+                // Categorie
+                String categoryString = record.get("categorie");
+                Category category = new Category(categoryString);
+                CategoryDao cd = new CategoryDao(em);
+                cd.create(category);
+                Category c = cd.findByName(category.getName());
 
                 // Brand processing
-                String brand = record.get("marque");
+                String brandString = record.get("marque");
+                Brand brand = new Brand(brandString);
                 BrandDao bd = new BrandDao(em);
-                bd.create(new Brand(brand));
-                // process the fields
+                bd.create(brand);
+                Brand b = bd.findByName(brand.getName());
 
+                // Product processing
+                String productName = record.get("nom");
+                NutrientGrade grade = new NutrientGrade(record.get("nutritionGradeFr"));
+                boolean palmOil = Boolean.parseBoolean(record.get("presenceHuilePalme"));
+
+                ProductDao productDao = new ProductDao(em);
+                Product newProduct = new Product(productName, b, c, grade,
+                        palmOil);
+
+                // AdditiveDao additiveDao = new AdditiveDao(em);
+                // String additiveString = record.get("additif");
+                // Additive additive = new Additive(additiveString);
+
+                String allergenString = record.get("allergenes");
+                Set<Allergen> allergens = new HashSet<>();
+                if (allergenString != null) {
+                    String[] allergenArray = allergenString.split(","); // Replace "," with your actual delimiter
+                    AllergenDao allergenDao = new AllergenDao(em);
+                    for (String allString : allergenArray) {
+                        String[] tokens = allString.split(":");
+                        System.out.println(tokens);
+                        // Allergen allergen = new Allergen(tokens[0], tokens[1]);
+                        // allergenDao.create(allergen); // Persist the allergen
+                        // allergens.add(allergen);
+                    }
+                    newProduct.setAllergens(allergens);
+                }
+                // Nutrients processing
+                // ...
+
+                productDao.create(newProduct);
+                Product product = productDao.findByName(newProduct.getName());
+                NutrientDao nd = new NutrientDao(em);
+                List<Nutrient> nutrients = nd.getAll();
+                for (Nutrient n : nutrients) {
+                    String nutrientValueString = record.get(n.getName());
+                    if (nutrientValueString != null) {
+                        double nutrientValue = Double.parseDouble(nutrientValueString);
+
+                        ProductNutrient productNutrient = new ProductNutrient();
+                        productNutrient.setProduct(product);
+                        productNutrient.setNutrient(n);
+                        productNutrient.setValue(nutrientValue);
+
+                        ProductNutrientDao productNutrientDao = new ProductNutrientDao(em);
+                        productNutrientDao.create(productNutrient); // Persist the ProductNutrient entity
+                    }
+                }
+
+                System.out.println("Processed record " + count);
                 count++;
             }
-            long endTime = System.currentTimeMillis(); // Capture end time
+
             t.commit();
+            // TIMER SECTION
+            long endTime = System.currentTimeMillis(); // Capture end time
 
             long duration = endTime - startTime; // Calculate duration
 
@@ -74,7 +170,6 @@ public class Main {
             emf.close();
         }
 
-        // try (BufferedReader br = new BufferedReader(new FileReader(csvFile))) {
         // br.readLine();
         // while ((line = br.readLine()) != null) {
         // String[] tokens = line.split(csvSeparator);

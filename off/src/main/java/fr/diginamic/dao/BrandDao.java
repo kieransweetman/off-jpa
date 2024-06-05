@@ -15,7 +15,8 @@ public class BrandDao {
         if (findByName(brand.getName()) == null) {
             em.persist(brand);
         } else {
-            System.out.println("Brand with name " + brand.getName() + " already exists.");
+            return;
+            // System.out.println("Brand with name " + brand.getName() + " already exists.");
         }
     }
 
@@ -24,8 +25,9 @@ public class BrandDao {
     }
 
     public Brand findByName(String name) {
-        TypedQuery<Brand> query = em.createQuery("SELECT b FROM Brand b WHERE b.name = :name", Brand.class);
-        query.setParameter("name", name);
+        TypedQuery<Brand> query = em.createQuery("SELECT b FROM Brand b WHERE LOWER(b.name) = LOWER(:name)",
+                Brand.class);
+        query.setParameter("name", name.toLowerCase());
         return query.getResultList().stream().findFirst().orElse(null);
     }
 }

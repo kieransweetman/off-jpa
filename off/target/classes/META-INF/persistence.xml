@@ -9,7 +9,7 @@
                 value="jdbc:postgresql://localhost:5432/open-food-facts" />
             <property name="jakarta.persistence.jdbc.user" value="kieransweetman" />
             <property name="jakarta.persistence.jdbc.password" value="" />
-            <property name="hibernate.show_sql" value="true" />
+            <!-- <property name="hibernate.show_sql" value="true" /> -->
             <property name="jakarta.persistence.schema-generation.database.action" value="update" />
         </properties>
     </persistence-unit>
